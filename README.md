@@ -41,37 +41,25 @@ Most projects stop at “LLM summary.”
 
 ## 🏠 Landing Page
 
-![Landing Page](./screenshots/landing.png)
-
----
-
-## 🔐 Authentication
-
-![Auth Page](./screenshots/auth.png)
+![Landing Page](MeetTrack-main/screenshots/landing.png)
 
 ---
 
 ## 📊 Dashboard
 
-![Dashboard](./screenshots/dashboard.png)
-
----
-
-## 🧾 AI Output
-
-![Output](./screenshots/output.png)
+![Dashboard](MeetTrack-main/screenshots/dashboard.png)
 
 ---
 
 ## 📂 History
 
-![History](./screenshots/history.png)
+![History](MeetTrack-main/screenshots/history.png)
 
 ---
 
 ## 👤 Profile
 
-![Profile](./screenshots/profile.png)
+![Profile](MeetTrack-main/screenshots/profile.png)
 
 ---
 

@@ -109,7 +109,14 @@ async def process_meeting(
         # Step 1 — Transcribe
         # ------------------------------------------------------------------
         logger.info("[Process] Step 1: Transcribing audio…")
-        transcript = transcribe_audio(file_path)
+        try:
+            transcript = transcribe_audio(file_path)
+        except RuntimeError as exc:
+            # Whisper not available on this server
+            raise HTTPException(
+                status_code=503,
+                detail=str(exc),
+            )
         logger.info(f"[Process] Transcript: {len(transcript)} chars")
 
         # ------------------------------------------------------------------

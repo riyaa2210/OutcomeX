@@ -38,6 +38,10 @@ jmespath==1.1.0
 # AI
 google-genai==1.16.0
 
+# Note: openai-whisper is NOT installed on the server.
+# Audio transcription uses local Whisper (install separately for local dev).
+# On the deployed server, use the transcript paste input instead.
+
 # Utilities
 numpy==2.3.3
 tqdm==4.67.3

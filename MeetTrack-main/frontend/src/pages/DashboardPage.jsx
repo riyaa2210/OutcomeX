@@ -247,7 +247,14 @@ export default function DashboardPage() {
           headers: auth({ "Content-Type": "application/json" }),
           body: JSON.stringify({ file_path: upData.file_path, file_name: upData.file_name }),
         });
-        if (!prRes.ok) throw new Error((await prRes.json()).detail || "Processing failed");
+        if (!prRes.ok) {
+          const errData = await prRes.json();
+          if (prRes.status === 503) {
+            // Whisper not available on server — guide user to paste transcript
+            throw new Error(errData.detail || "Audio transcription unavailable on this server. Please paste your transcript instead.");
+          }
+          throw new Error(errData.detail || "Processing failed");
+        }
         const prData = await prRes.json();
 
         setStep(2);

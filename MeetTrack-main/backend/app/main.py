@@ -31,7 +31,6 @@ from backend.routes.action_item_routes import router as action_router
 from backend.routes.meeting_routes import router as meeting_router
 from backend.routes.task_routes import router as task_router
 from backend.routes.webhook_routes import router as webhook_router
-from backend.routes.rag_routes import router as rag_router
 
 # Schemas & CRUD
 from backend.app import schemas, crud
@@ -40,12 +39,18 @@ from backend.app.auth import create_access_token, get_current_user
 # Create tables
 Base.metadata.create_all(bind=engine)
 
-app = FastAPI()
+app = FastAPI(title="MeetTrack API", version="1.0.0")
 
-# ✅ CORS Configuration
+# ✅ CORS — reads allowed origins from env (comma-separated)
+_raw_origins = os.getenv(
+    "CORS_ORIGINS",
+    "http://localhost:5173,http://127.0.0.1:5173"
+)
+ALLOWED_ORIGINS = [o.strip() for o in _raw_origins.split(",") if o.strip()]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173"],  # frontend URL
+    allow_origins=ALLOWED_ORIGINS,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -268,5 +273,3 @@ app.include_router(action_router)
 app.include_router(meeting_router)
 app.include_router(task_router)
 app.include_router(webhook_router)
-app.include_router(rag_router)
-print("GEMINI KEY:", os.getenv("GEMINI_API_KEY"))

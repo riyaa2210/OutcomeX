@@ -6,7 +6,7 @@ import {
 import { useEffect, useMemo, useState } from "react";
 
 const ease = [0.25, 0.1, 0.25, 1];
-const API  = "http://127.0.0.1:8000";
+const API  = import.meta.env.VITE_API_BASE_URL || "http://127.0.0.1:8000";
 const auth = () => ({ Authorization: `Bearer ${localStorage.getItem("access_token")}` });
 
 /* ── helpers ─────────────────────────────────────────────── */

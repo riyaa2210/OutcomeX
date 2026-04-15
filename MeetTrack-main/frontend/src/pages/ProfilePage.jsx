@@ -73,7 +73,7 @@ export default function ProfilePage() {
     if (!user?.id) { setLoading(false); return; }
     (async () => {
       try {
-        const res = await fetch(`http://127.0.0.1:8000/profile/${user.id}`, {
+        const res = await fetch(`${import.meta.env.VITE_API_BASE_URL || "http://127.0.0.1:8000"}/profile/${user.id}`, {
           headers: { Authorization: `Bearer ${localStorage.getItem("access_token")}` },
         });
         const d = res.ok ? await res.json() : user;
@@ -105,7 +105,7 @@ export default function ProfilePage() {
   async function handleSave() {
     setSaving(true); setError(""); setSuccess("");
     try {
-      const res = await fetch(`http://127.0.0.1:8000/profile/${user.id}`, {
+      const res = await fetch(`${import.meta.env.VITE_API_BASE_URL || "http://127.0.0.1:8000"}/profile/${user.id}`, {
         method: "PUT",
         headers: {
           "Content-Type": "application/json",

@@ -19,7 +19,7 @@ import { easeSoft, buttonHoverProps } from "../lib/motionPresets";
 import { UploadProcessor } from "../components/UploadProcessor";
 import MeetingOutput from "../components/MeetingOutput";
 
-const API = "http://127.0.0.1:8000";
+const API = import.meta.env.VITE_API_BASE_URL || "http://127.0.0.1:8000";
 const token = () => localStorage.getItem("access_token");
 const auth  = (extra = {}) => ({ Authorization: `Bearer ${token()}`, ...extra });
 

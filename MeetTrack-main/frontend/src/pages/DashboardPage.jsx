@@ -265,24 +265,24 @@ export default function DashboardPage() {
         });
 
       } else {
-        // ── transcript-only path ──
+        // ── transcript-only path — use /process-transcript for full output + history ──
         setStep(1);
-        const res = await fetch(`${API}/extract-tasks`, {
+        const res = await fetch(`${API}/process-transcript`, {
           method: "POST",
           headers: auth({ "Content-Type": "application/json" }),
-          body: JSON.stringify({ meeting_text: transcript.trim() }),
+          body: JSON.stringify({ transcript: transcript.trim(), title: "Pasted Transcript" }),
         });
         setStep(2);
         setRawTx(transcript.trim());
 
         if (res.ok) {
           const data = await res.json();
-          setStructured({
-            summary: "Transcript analysed — action items extracted below.",
+          setStructured(data.structured_output ?? {
+            summary: data.summary || "",
             decisions: [],
-            action_items: (data.tasks || []).map(t => ({
-              task:             t.task_description || t.task || "",
-              assignee:         t.person_name || t.assignee || "Unassigned",
+            action_items: (data.action_items || []).map(t => ({
+              task:             t.task || t.task_description || "",
+              assignee:         t.assignee || t.person_name || "Unassigned",
               deadline:         t.deadline || null,
               confidence_score: t.confidence_score ?? 0.8,
             })),

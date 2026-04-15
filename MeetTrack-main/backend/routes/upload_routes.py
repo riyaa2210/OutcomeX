@@ -37,6 +37,12 @@ class ProcessRequest(BaseModel):
     file_name: str = "Unknown"
 
 
+class TranscriptProcessRequest(BaseModel):
+    """Process a meeting from a raw transcript string — no audio needed."""
+    transcript: str
+    title: str = "Untitled Meeting"
+
+
 def get_db():
     db = SessionLocal()
     try:
@@ -199,6 +205,97 @@ async def process_meeting(
                 "action_items": saved_items,
             },
             # Legacy field — keep for backward compatibility with frontend
+            "summary": structured.get("summary", ""),
+            "action_items": saved_items,
+        }
+
+    except HTTPException:
+        raise
+    except Exception as exc:
+        error_msg = f"Processing failed: {exc}"
+        logger.error(error_msg)
+        logger.error(traceback.format_exc())
+        raise HTTPException(status_code=500, detail=error_msg)
+
+
+# ---------------------------------------------------------------------------
+# Process from raw transcript — no audio upload needed
+# ---------------------------------------------------------------------------
+
+@router.post("/process-transcript")
+async def process_transcript(
+    request: TranscriptProcessRequest,
+    background_tasks: BackgroundTasks,
+    current_user=Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """
+    Process a meeting from a pasted transcript (no audio file required).
+    Skips transcription entirely — goes straight to AI extraction.
+    """
+    try:
+        transcript = request.transcript.strip()
+        if not transcript:
+            raise HTTPException(status_code=400, detail="Transcript is empty")
+
+        logger.info(f"[ProcessTranscript] Starting for user {current_user.id}")
+
+        # Create meeting record
+        new_meeting = Meeting(
+            user_id=current_user.id,
+            title=request.title or "Untitled Meeting",
+            audio_path=None,
+            transcript=transcript,
+            created_at=datetime.utcnow(),
+        )
+        db.add(new_meeting)
+        db.commit()
+        db.refresh(new_meeting)
+
+        # AI extraction
+        structured: dict = generate_structured_summary(transcript)
+
+        # Persist action items
+        saved_items = []
+        for item in structured.get("action_items", []):
+            if item.get("confidence_score", 1.0) < 0.4:
+                continue
+            action = ActionItem(
+                meeting_id=new_meeting.id,
+                assigned_to=item.get("assignee") or "Unassigned",
+                title=item.get("task", "")[:100],
+                description=item.get("task", ""),
+                deadline=item.get("deadline"),
+                status="Pending",
+            )
+            db.add(action)
+            saved_items.append({
+                "task": item.get("task"),
+                "assignee": item.get("assignee"),
+                "deadline": item.get("deadline"),
+                "confidence_score": item.get("confidence_score"),
+            })
+        db.commit()
+
+        # n8n trigger
+        background_tasks.add_task(
+            trigger_n8n_workflow, db, new_meeting.id, transcript,
+            {"summary": structured.get("summary", ""),
+             "decisions": structured.get("decisions", []),
+             "action_items": saved_items},
+            "meeting_processed",
+        )
+
+        return {
+            "status": "success",
+            "meeting_id": new_meeting.id,
+            "title": new_meeting.title,
+            "transcript": transcript,
+            "structured_output": {
+                "summary": structured.get("summary", ""),
+                "decisions": structured.get("decisions", []),
+                "action_items": saved_items,
+            },
             "summary": structured.get("summary", ""),
             "action_items": saved_items,
         }

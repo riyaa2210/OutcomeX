@@ -37,6 +37,50 @@ Most projects stop at “LLM summary.”
 👉 This is what real AI products look like.
 
 ---
+# 📸 Screenshots
+
+## 🏠 Landing Page
+
+![Landing Page](./screenshots/landing.png)
+
+---
+
+## 🔐 Authentication
+
+![Auth Page](./screenshots/auth.png)
+
+---
+
+## 📊 Dashboard
+
+![Dashboard](./screenshots/dashboard.png)
+
+---
+
+## 🧾 AI Output
+
+![Output](./screenshots/output.png)
+
+---
+
+## 📂 History
+
+![History](./screenshots/history.png)
+
+---
+
+## 👤 Profile
+
+![Profile](./screenshots/profile.png)
+
+---
+
+# 🎥 Demo
+
+[Demo ](https://outcomex-1.onrender.com)
+
+---
+
 
 # 🧠 AI / NLP Pipeline
 
@@ -156,50 +200,6 @@ OutcomeX:
 * Real system design
 * AI reliability engineering
 * Production-ready architecture
-
----
-
-# 📸 Screenshots
-
-## 🏠 Landing Page
-
-![Landing Page](./screenshots/landing.png)
-
----
-
-## 🔐 Authentication
-
-![Auth Page](./screenshots/auth.png)
-
----
-
-## 📊 Dashboard
-
-![Dashboard](./screenshots/dashboard.png)
-
----
-
-## 🧾 AI Output
-
-![Output](./screenshots/output.png)
-
----
-
-## 📂 History
-
-![History](./screenshots/history.png)
-
----
-
-## 👤 Profile
-
-![Profile](./screenshots/profile.png)
-
----
-
-# 🎥 Demo
-
-[Watch Demo Video](https://your-demo-link.com)
 
 ---
 

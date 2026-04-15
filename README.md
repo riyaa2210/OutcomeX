@@ -39,28 +39,13 @@ Most projects stop at “LLM summary.”
 ---
 # 📸 Screenshots
 
-## 🏠 Landing Page
+![Landing](MeetTrack-main/screenshots/landing.png)
 
-(MeetTrack-main/screenshots/landing.png)
+![Dashboard](MeetTrack-main/screenshots/dashboard.png)
 
----
+![History](MeetTrack-main/screenshots/history.png)
 
-## 📊 Dashboard
-
-(MeetTrack-main/screenshots/dashboard.png)
-
----
-
-## 📂 History
-
-(MeetTrack-main/screenshots/history.png)
-
----
-
-## 👤 Profile
-
-(MeetTrack-main/screenshots/profile.png)
-
+![Profile](MeetTrack-main/screenshots/profile.png)
 ---
 
 # 🎥 Demo

@@ -8,9 +8,9 @@ services:
     startCommand: uvicorn backend.app.main:app --host 0.0.0.0 --port $PORT
     envVars:
       - key: DATABASE_URL
-        sync: false          # set manually in Render dashboard
+        sync: false
       - key: SECRET_KEY
-        generateValue: true  # Render auto-generates a secure value
+        generateValue: true
       - key: GEMINI_API_KEY
         sync: false
       - key: AWS_REGION
@@ -23,12 +23,12 @@ services:
         sync: false
       - key: SNS_TOPIC_ARN
         sync: false
+      - key: USE_AWS_TRANSCRIBE
+        value: "true"
       - key: CORS_ORIGINS
-        sync: false          # set to your Render frontend URL after deploy
+        sync: false
       - key: N8N_WEBHOOK_URL
         sync: false
-      - key: PYTHON_VERSION
-        value: "3.11.0"
 
   # ── Frontend (React/Vite) ──────────────────────────────────
   - type: web

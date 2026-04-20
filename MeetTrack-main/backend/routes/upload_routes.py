@@ -106,18 +106,18 @@ async def process_meeting(
             raise HTTPException(status_code=400, detail="File not found")
 
         # ------------------------------------------------------------------
-        # Step 1 — Transcribe
+        # Step 1 — Transcribe via Colab Whisper API
         # ------------------------------------------------------------------
-        logger.info("[Process] Step 1: Transcribing audio…")
+        logger.info("[Process] Step 1: Sending audio to Colab Whisper API…")
         try:
             transcript = transcribe_audio(file_path)
-        except RuntimeError as exc:
-            # Whisper not available on this server
+            logger.info(f"[Process] Transcription received: {len(transcript)} chars")
+        except (RuntimeError, FileNotFoundError) as exc:
+            logger.error(f"[Process] Transcription failed: {exc}")
             raise HTTPException(
-                status_code=503,
+                status_code=400,
                 detail=str(exc),
             )
-        logger.info(f"[Process] Transcript: {len(transcript)} chars")
 
         # ------------------------------------------------------------------
         # Step 2 — Create meeting record

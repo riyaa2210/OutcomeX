@@ -1,61 +1,139 @@
 """
-Transcription Service — Local Whisper only.
+Transcription Service
+=====================
+Sends audio to an external Colab Whisper API for transcription.
+Local Whisper is NOT used — Render cannot run it (no GPU / low RAM).
 
-On Render (or any server without Whisper/ffmpeg):
-  - Audio upload will return a 503 with a clear message
-  - Transcript paste (/process-transcript) works fine — no Whisper needed
+Environment variable required:
+    COLAB_API_URL  — your ngrok/localtunnel URL from Google Colab
+                     e.g. https://xxxx.ngrok-free.app
+                     or   https://xxxx.loca.lt
 
-To use audio upload locally:
-  pip install openai-whisper
-  Install ffmpeg and add to PATH
+The Colab Flask API must expose:
+    POST /transcribe  — accepts multipart file, returns {"transcription": "..."}
+    GET  /health      — returns {"status": "ok"}
 """
+
 import os
-import shutil
 import logging
+import requests
 
 logger = logging.getLogger(__name__)
 
-# Lazy-load whisper — only imported when actually needed
-_model = None
-
-
-def _whisper_available() -> bool:
-    """Check if whisper and ffmpeg are both available."""
-    try:
-        import whisper  # noqa: F401
-        return shutil.which("ffmpeg") is not None
-    except ImportError:
-        return False
-
-
-def _get_model():
-    global _model
-    if _model is None:
-        import whisper
-        logger.info("[Transcribe] Loading Whisper model (small)…")
-        _model = whisper.load_model("small")
-    return _model
+# ── Read Colab URL from environment ──────────────────────────
+def _get_colab_url() -> str:
+    url = (
+        os.getenv("COLAB_API_URL", "")        # primary key
+        or os.getenv("COLAB_WHISPER_URL", "")  # legacy fallback
+    ).rstrip("/")
+    return url
 
 
 def transcribe_audio(file_path: str) -> str:
     """
-    Transcribe an audio file using local Whisper.
-    Raises RuntimeError with a user-friendly message if Whisper is not available.
+    Send an audio file to the Colab Whisper API and return the transcription.
+
+    Args:
+        file_path: absolute path to the audio file on disk
+
+    Returns:
+        Transcribed text string
+
+    Raises:
+        RuntimeError: with a user-friendly message on any failure
     """
-    file_path = os.path.abspath(file_path)
+    colab_url = _get_colab_url()
 
-    if not os.path.exists(file_path):
-        raise FileNotFoundError(f"File not found: {file_path}")
-
-    if not _whisper_available():
+    # ── Guard: env var must be set ────────────────────────────
+    if not colab_url:
+        logger.error("[Transcribe] COLAB_API_URL / COLAB_WHISPER_URL not set in environment")
         raise RuntimeError(
-            "Audio transcription is not available on this server. "
-            "Please paste your transcript directly using the text input instead."
+            "Audio transcription is not configured. "
+            "Set COLAB_API_URL in your Render environment variables "
+            "to your running Colab Whisper server URL."
         )
 
-    logger.info(f"[Transcribe] Transcribing {file_path} with Whisper…")
-    model = _get_model()
-    result = model.transcribe(file_path)
-    text = result["text"]
-    logger.info(f"[Transcribe] Done — {len(text)} chars")
-    return text
+    # ── Guard: file must exist ────────────────────────────────
+    if not os.path.exists(file_path):
+        raise FileNotFoundError(f"Audio file not found: {file_path}")
+
+    endpoint = f"{colab_url}/transcribe"
+    filename  = os.path.basename(file_path)
+    file_size = os.path.getsize(file_path)
+
+    logger.info(f"[Transcribe] Sending '{filename}' ({file_size} bytes) → {endpoint}")
+
+    # ── Call Colab API ────────────────────────────────────────
+    try:
+        with open(file_path, "rb") as audio_file:
+            response = requests.post(
+                endpoint,
+                files={"file": (filename, audio_file, "audio/mpeg")},
+                headers={
+                    # localtunnel requires this header to bypass the reminder page
+                    "bypass-tunnel-reminder": "true",
+                    # ngrok free tier requires this header
+                    "ngrok-skip-browser-warning": "true",
+                },
+                timeout=300,  # 5 minutes — large files can take time
+            )
+
+        logger.info(f"[Transcribe] Response status: {response.status_code}")
+
+        # ── Handle non-2xx ────────────────────────────────────
+        if not response.ok:
+            try:
+                err_detail = response.json().get("error", response.text[:200])
+            except Exception:
+                err_detail = response.text[:200]
+
+            logger.error(f"[Transcribe] Colab API error {response.status_code}: {err_detail}")
+            raise RuntimeError(
+                f"Colab Whisper API returned error {response.status_code}: {err_detail}"
+            )
+
+        # ── Parse response ────────────────────────────────────
+        try:
+            data = response.json()
+        except Exception:
+            logger.error(f"[Transcribe] Invalid JSON response: {response.text[:200]}")
+            raise RuntimeError("Colab Whisper API returned invalid JSON response.")
+
+        transcription = data.get("transcription") or data.get("text") or ""
+
+        if not transcription:
+            logger.warning(f"[Transcribe] Empty transcription in response: {data}")
+            raise RuntimeError(
+                "Colab Whisper API returned an empty transcription. "
+                "Check that the audio file contains speech."
+            )
+
+        logger.info(f"[Transcribe] ✅ Success — {len(transcription)} chars transcribed")
+        return transcription
+
+    # ── Network error handling ────────────────────────────────
+    except requests.exceptions.Timeout:
+        logger.error(f"[Transcribe] Timeout after 300s calling {endpoint}")
+        raise RuntimeError(
+            "Colab Whisper API timed out (5 min limit). "
+            "Try a shorter audio file, or switch to the 'tiny' Whisper model in Colab."
+        )
+
+    except requests.exceptions.ConnectionError as exc:
+        logger.error(f"[Transcribe] Connection error: {exc}")
+        raise RuntimeError(
+            "Cannot connect to Colab Whisper server. "
+            "Make sure your Colab notebook is running and the tunnel URL is correct. "
+            f"Current URL: {colab_url}"
+        )
+
+    except requests.exceptions.RequestException as exc:
+        logger.error(f"[Transcribe] Request error: {exc}")
+        raise RuntimeError(f"Network error calling Colab Whisper API: {exc}")
+
+    except RuntimeError:
+        raise  # re-raise our own errors unchanged
+
+    except Exception as exc:
+        logger.error(f"[Transcribe] Unexpected error: {exc}")
+        raise RuntimeError(f"Unexpected transcription error: {exc}")

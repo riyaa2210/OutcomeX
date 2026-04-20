@@ -42,16 +42,18 @@ Base.metadata.create_all(bind=engine)
 app = FastAPI(title="MeetTrack API", version="1.0.0")
 
 # ✅ CORS — reads allowed origins from env (comma-separated)
-_raw_origins = os.getenv(
-    "CORS_ORIGINS",
-    "http://localhost:5173,http://127.0.0.1:5173,http://localhost:5174,http://127.0.0.1:5174"
-)
-ALLOWED_ORIGINS = [o.strip() for o in _raw_origins.split(",") if o.strip()]
+# If CORS_ORIGINS is not set, allow all origins (safe fallback for initial deploy)
+_raw_origins = os.getenv("CORS_ORIGINS", "*")
+
+if _raw_origins.strip() == "*":
+    ALLOWED_ORIGINS = ["*"]
+else:
+    ALLOWED_ORIGINS = [o.strip() for o in _raw_origins.split(",") if o.strip()]
 
 app.add_middleware(
     CORSMiddleware,
     allow_origins=ALLOWED_ORIGINS,
-    allow_credentials=True,
+    allow_credentials=ALLOWED_ORIGINS != ["*"],  # credentials not allowed with wildcard
     allow_methods=["*"],
     allow_headers=["*"],
 )

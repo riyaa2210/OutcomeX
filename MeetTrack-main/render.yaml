@@ -24,7 +24,7 @@ services:
       - key: SNS_TOPIC_ARN
         sync: false
       - key: USE_AWS_TRANSCRIBE
-        value: "true"
+        value: "false"
       - key: CORS_ORIGINS
         sync: false
       - key: N8N_WEBHOOK_URL
@@ -34,12 +34,12 @@ services:
   - type: web
     name: meettrack-frontend
     runtime: static
-    rootDir: MeetTrack-main/frontend
+    rootDir: client
     buildCommand: npm install && npm run build
     staticPublishPath: dist
     envVars:
       - key: VITE_API_BASE_URL
-        sync: false          # set to your backend Render URL
+        sync: false
     routes:
       - type: rewrite
         source: /*

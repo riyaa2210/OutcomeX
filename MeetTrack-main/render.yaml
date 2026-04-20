@@ -8,9 +8,9 @@ services:
     startCommand: uvicorn backend.app.main:app --host 0.0.0.0 --port $PORT
     envVars:
       - key: DATABASE_URL
-        sync: false
+        sync: false          # paste Render PostgreSQL internal URL
       - key: SECRET_KEY
-        generateValue: true
+        generateValue: true  # auto-generated secure value
       - key: GEMINI_API_KEY
         sync: false
       - key: AWS_REGION
@@ -26,20 +26,22 @@ services:
       - key: USE_AWS_TRANSCRIBE
         value: "false"
       - key: CORS_ORIGINS
-        sync: false
+        sync: false          # set to your frontend Render URL after deploy
       - key: N8N_WEBHOOK_URL
         sync: false
+      - key: COLAB_WHISPER_URL
+        sync: false          # your localtunnel/ngrok URL from Colab
 
   # ── Frontend (React/Vite) ──────────────────────────────────
   - type: web
     name: meettrack-frontend
     runtime: static
-    rootDir: client
+    rootDir: MeetTrack-main/frontend
     buildCommand: npm install && npm run build
     staticPublishPath: dist
     envVars:
       - key: VITE_API_BASE_URL
-        sync: false
+        sync: false          # set to your backend Render URL
     routes:
       - type: rewrite
         source: /*

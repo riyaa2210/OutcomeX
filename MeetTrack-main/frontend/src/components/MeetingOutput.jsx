@@ -132,7 +132,7 @@ function SummaryCard({ summary, transcript }) {
 
       <Chip icon={Sparkles} label="Meeting Summary" color={dark ? "#818cf8" : "#4338ca"} />
 
-      <p className={`relative z-10 text-sm leading-relaxed font-light ${dark ? "text-slate-200" : "text-slate-800"}`}>
+      <p className={`relative z-10 text-base leading-relaxed font-normal ${dark ? "text-slate-100" : "text-slate-900"}`}>
         <TypedText text={summary} speed={11} />
       </p>
 

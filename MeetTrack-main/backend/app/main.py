@@ -74,7 +74,7 @@ def root():
 # ✅ Get all meetings for current user
 @app.get("/meetings")
 def get_all_meetings(current_user=Depends(get_current_user), db: Session = Depends(get_db)):
-    from models.meeting import Meeting
+    from backend.models.meeting import Meeting
     meetings = db.query(Meeting).filter(Meeting.user_id == current_user.id).all()
     return [
         {

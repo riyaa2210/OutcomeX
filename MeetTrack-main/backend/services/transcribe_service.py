@@ -73,7 +73,8 @@ def transcribe_audio(file_path: str) -> str:
                 headers={
                     "bypass-tunnel-reminder": "true",
                     "ngrok-skip-browser-warning": "true",
-                    "User-Agent": "MeetTrack-Backend/1.0",
+                    "ngrok-skip-browser-warning": "69420",  # numeric value also works
+                    "User-Agent": "python-requests/2.28.0",  # plain UA bypasses ngrok check
                 },
                 timeout=300,
                 verify=True,

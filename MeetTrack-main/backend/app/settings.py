@@ -22,7 +22,7 @@ GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 # Authentication
 SECRET_KEY = os.getenv("SECRET_KEY", "supersecretkey123")
 ALGORITHM = "HS256"
-ACCESS_TOKEN_EXPIRE_MINUTES = 60
+ACCESS_TOKEN_EXPIRE_MINUTES = int(os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", "1440"))  # 24 hours default
 
 # CORS Settings
 CORS_ORIGINS = [

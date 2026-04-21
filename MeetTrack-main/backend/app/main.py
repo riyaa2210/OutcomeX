@@ -73,6 +73,18 @@ def root():
     return {"message": "Automated Meeting Outcome Tracker running"}
 
 
+@app.get("/debug/config")
+def debug_config():
+    """Check env vars are set correctly on Render (remove after debugging)"""
+    colab_url = os.getenv("COLAB_API_URL", "") or os.getenv("COLAB_WHISPER_URL", "")
+    return {
+        "COLAB_API_URL_set": bool(os.getenv("COLAB_API_URL")),
+        "COLAB_WHISPER_URL_set": bool(os.getenv("COLAB_WHISPER_URL")),
+        "colab_url_preview": colab_url[:40] + "..." if len(colab_url) > 40 else colab_url,
+        "CORS_ORIGINS": os.getenv("CORS_ORIGINS", "not set"),
+    }
+
+
 # ✅ Get all meetings for current user
 @app.get("/meetings")
 def get_all_meetings(current_user=Depends(get_current_user), db: Session = Depends(get_db)):

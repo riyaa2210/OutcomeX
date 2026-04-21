@@ -62,6 +62,7 @@ def transcribe_audio(file_path: str) -> str:
     file_size = os.path.getsize(file_path)
 
     logger.info(f"[Transcribe] Sending '{filename}' ({file_size} bytes) → {endpoint}")
+    print(f"[Transcribe] DEBUG — calling: {endpoint}")  # visible in Render logs
 
     # ── Call Colab API ────────────────────────────────────────
     try:
@@ -70,12 +71,12 @@ def transcribe_audio(file_path: str) -> str:
                 endpoint,
                 files={"file": (filename, audio_file, "audio/mpeg")},
                 headers={
-                    # localtunnel requires this header to bypass the reminder page
                     "bypass-tunnel-reminder": "true",
-                    # ngrok free tier requires this header
                     "ngrok-skip-browser-warning": "true",
+                    "User-Agent": "MeetTrack-Backend/1.0",
                 },
-                timeout=300,  # 5 minutes — large files can take time
+                timeout=300,
+                verify=True,
             )
 
         logger.info(f"[Transcribe] Response status: {response.status_code}")

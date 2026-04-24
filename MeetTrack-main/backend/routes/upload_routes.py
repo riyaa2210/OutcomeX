@@ -22,7 +22,7 @@ from backend.models.meeting import Meeting
 from backend.models.action_item import ActionItem
 from backend.services.transcribe_service import transcribe_audio
 from backend.services.summary_service import generate_structured_summary
-from backend.services.n8n_service import trigger_n8n_workflow
+from backend.services.automation_service import trigger_automation as trigger_n8n_workflow
 
 logger = logging.getLogger(__name__)
 

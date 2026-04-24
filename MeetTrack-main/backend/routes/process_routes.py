@@ -20,7 +20,7 @@ from backend.schemas.result_schema import SummaryApproval
 from backend.services.transcribe_service import transcribe_audio
 from backend.services.nlp_service import extract_action_items
 from backend.services.summary_service import generate_summary, generate_structured_summary
-from backend.services.n8n_service import trigger_n8n_workflow
+from backend.services.automation_service import trigger_automation as trigger_n8n_workflow
 from backend.app.database import SessionLocal
 from backend.app.auth import get_current_user
 

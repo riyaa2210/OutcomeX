@@ -1,4 +1,4 @@
-import { History, LayoutDashboard, LogOut, MessageSquare, Radio, User } from "lucide-react";
+import { BarChart2, History, LayoutDashboard, LogOut, MessageSquare, Radio, User } from "lucide-react";
 import { NavLink, Outlet, useNavigate } from "react-router-dom";
 import BrandLogo from "../components/BrandLogo";
 import ThemeToggle from "../components/ThemeToggle";
@@ -9,6 +9,7 @@ const items = [
   { to: "/history",   label: "History",   icon: History          },
   { to: "/ask",       label: "Ask AI",    icon: MessageSquare    },
   { to: "/live/new",  label: "Live",      icon: Radio            },
+  { to: "/analytics", label: "Analytics", icon: BarChart2        },
   { to: "/profile",   label: "Profile",   icon: User             },
 ];
 

@@ -33,6 +33,7 @@ from backend.routes.task_routes import router as task_router
 from backend.routes.webhook_routes import router as webhook_router
 from backend.routes.rag_routes import router as rag_router
 from backend.routes.live_routes import router as live_router
+from backend.routes.analytics_routes import router as analytics_router
 
 # Schemas & CRUD
 from backend.app import schemas, crud
@@ -291,3 +292,4 @@ app.include_router(task_router)
 app.include_router(webhook_router)
 app.include_router(rag_router)
 app.include_router(live_router)
+app.include_router(analytics_router)

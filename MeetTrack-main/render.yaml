@@ -13,6 +13,12 @@ services:
         generateValue: true
       - key: GEMINI_API_KEY
         sync: false
+      - key: OPENAI_API_KEY
+        sync: false          # optional — enables GPT-4o routing
+      - key: LLM_CACHE_ENABLED
+        value: "true"
+      - key: LLM_CACHE_TTL
+        value: "3600"
       - key: REDIS_URL
         sync: false          # paste Render Redis internal URL
       - key: AWS_REGION

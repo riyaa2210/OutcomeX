@@ -37,6 +37,7 @@ jmespath==1.1.0
 
 # AI
 google-genai==1.16.0
+openai==1.82.0
 
 # NLP — Advanced hybrid pipeline
 spacy==3.7.6

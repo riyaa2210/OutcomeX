@@ -87,6 +87,36 @@ def root():
     return {"message": "Automated Meeting Outcome Tracker running"}
 
 
+@app.get("/health")
+def health_check(db: Session = Depends(get_db)):
+    """
+    Health check endpoint for Docker/load balancer probes.
+    Verifies DB connectivity and returns service status.
+    """
+    import time
+    start = time.perf_counter()
+    db_ok = False
+    db_error = None
+
+    try:
+        from sqlalchemy import text
+        db.execute(text("SELECT 1"))
+        db_ok = True
+    except Exception as exc:
+        db_error = str(exc)
+
+    latency_ms = round((time.perf_counter() - start) * 1000, 1)
+
+    status = "healthy" if db_ok else "degraded"
+    return {
+        "status":     status,
+        "service":    "outcomex-backend",
+        "version":    "1.0.0",
+        "db":         "ok" if db_ok else f"error: {db_error}",
+        "latency_ms": latency_ms,
+    }
+
+
 @app.get("/debug/config")
 def debug_config():
     """Check env vars are set correctly on Render (remove after debugging)"""

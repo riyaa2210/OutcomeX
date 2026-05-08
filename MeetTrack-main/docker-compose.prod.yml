@@ -1,0 +1,111 @@
+# ── OutcomeX — Production docker-compose override ────────────────────────────
+# Usage:
+#   docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
+#
+# Differences from dev:
+#   - No source code volume mounts (immutable images)
+#   - No --reload flag
+#   - More workers, production log level
+#   - Nginx reverse proxy instead of Vite dev server
+#   - Resource limits
+#   - Restart policies
+
+version: "3.9"
+
+services:
+
+  postgres:
+    restart: always
+    deploy:
+      resources:
+        limits:
+          memory: 512m
+
+  redis:
+    restart: always
+    deploy:
+      resources:
+        limits:
+          memory: 256m
+
+  backend:
+    restart: always
+    volumes:
+      - uploads_data:/app/uploads   # only uploads, no source mount
+    command: >
+      uvicorn backend.app.main:app
+      --host 0.0.0.0
+      --port 8000
+      --workers 4
+      --log-level warning
+      --access-log
+      --proxy-headers
+      --forwarded-allow-ips "*"
+    environment:
+      ENVIRONMENT: production
+      LOG_LEVEL:   warning
+    deploy:
+      resources:
+        limits:
+          memory: 1g
+      update_config:
+        parallelism: 1
+        delay: 10s
+        failure_action: rollback
+        order: start-first          # zero-downtime: start new before stopping old
+
+  worker:
+    restart: always
+    volumes:
+      - uploads_data:/app/uploads
+    command: >
+      celery -A backend.worker.celery_app worker
+      -Q transcription,ai_extraction,email_delivery,analytics,webhooks
+      --loglevel=warning
+      --concurrency=4
+    deploy:
+      resources:
+        limits:
+          memory: 1g
+
+  beat:
+    restart: always
+    deploy:
+      resources:
+        limits:
+          memory: 256m
+
+  flower:
+    restart: always
+    deploy:
+      resources:
+        limits:
+          memory: 256m
+
+  # ── Frontend (nginx, production build) ──────────────────────────────────────
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      target: runtime
+      args:
+        VITE_API_URL:      ${VITE_API_URL}
+        VITE_API_BASE_URL: ${VITE_API_BASE_URL}
+        VITE_WS_URL:       ${VITE_WS_URL}
+    container_name: outcomex-frontend
+    restart: always
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./ssl:/etc/nginx/ssl:ro    # mount TLS certs
+    depends_on:
+      - backend
+    deploy:
+      resources:
+        limits:
+          memory: 128m
+
+volumes:
+  uploads_data:
+    driver: local

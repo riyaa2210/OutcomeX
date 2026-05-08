@@ -1,0 +1,363 @@
+# ── OutcomeX CI Pipeline ──────────────────────────────────────────────────────
+# Triggers: push to main/develop, all PRs
+# Jobs: lint → test → build → api-test → deploy (main only)
+
+name: CI
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main, develop]
+
+env:
+  PYTHON_VERSION: "3.11"
+  NODE_VERSION:   "20"
+  REGISTRY:       ghcr.io
+  IMAGE_PREFIX:   ${{ github.repository_owner }}/outcomex
+
+concurrency:
+  group:  ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+# ── Job 1: Backend lint ───────────────────────────────────────────────────────
+jobs:
+  lint-backend:
+    name: Lint Backend
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: MeetTrack-main
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+
+      - name: Install lint tools
+        run: pip install ruff==0.9.10 mypy==1.15.0
+
+      - name: Ruff lint
+        run: ruff check backend/ --output-format=github
+
+      - name: Ruff format check
+        run: ruff format backend/ --check
+
+# ── Job 2: Frontend lint ──────────────────────────────────────────────────────
+  lint-frontend:
+    name: Lint Frontend
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: MeetTrack-main/frontend
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: MeetTrack-main/frontend/package-lock.json
+
+      - run: npm ci
+      - run: npm run lint
+
+# ── Job 3: Backend tests ──────────────────────────────────────────────────────
+  test-backend:
+    name: Test Backend
+    runs-on: ubuntu-latest
+    needs: lint-backend
+
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_USER:     test
+          POSTGRES_PASSWORD: test
+          POSTGRES_DB:       test_outcomex
+        options: >-
+          --health-cmd "pg_isready -U test"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432:5432
+
+      redis:
+        image: redis:7-alpine
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 6379:6379
+
+    defaults:
+      run:
+        working-directory: MeetTrack-main
+
+    env:
+      DATABASE_URL: postgresql://test:test@localhost:5432/test_outcomex
+      REDIS_URL:    redis://localhost:6379/0
+      SECRET_KEY:   ci-test-secret-key-not-for-production
+      ENVIRONMENT:  test
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+
+      - name: Install dependencies
+        run: |
+          pip install -r requirements.txt
+          pip install pytest==8.3.5 pytest-asyncio==0.24.0 httpx==0.28.1
+          python -m spacy download en_core_web_sm
+
+      - name: Enable pgvector
+        run: |
+          PGPASSWORD=test psql -h localhost -U test -d test_outcomex \
+            -c "CREATE EXTENSION IF NOT EXISTS vector;"
+
+      - name: Run tests
+        run: pytest tests/ -v --tb=short --timeout=60
+        continue-on-error: false
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results
+          path: MeetTrack-main/tests/results/
+
+# ── Job 4: Frontend build validation ─────────────────────────────────────────
+  build-frontend:
+    name: Build Frontend
+    runs-on: ubuntu-latest
+    needs: lint-frontend
+    defaults:
+      run:
+        working-directory: MeetTrack-main/frontend
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: MeetTrack-main/frontend/package-lock.json
+
+      - run: npm ci
+
+      - name: Build
+        run: npm run build
+        env:
+          VITE_API_URL:      https://api.example.com
+          VITE_API_BASE_URL: https://api.example.com
+
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: frontend-dist
+          path: MeetTrack-main/frontend/dist/
+          retention-days: 1
+
+# ── Job 5: Docker build & push ────────────────────────────────────────────────
+  docker-build:
+    name: Docker Build & Push
+    runs-on: ubuntu-latest
+    needs: [test-backend, build-frontend]
+    if: github.event_name == 'push'
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract metadata (backend)
+        id: meta-backend
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-backend
+          tags: |
+            type=ref,event=branch
+            type=sha,prefix=sha-
+            type=raw,value=latest,enable=${{ github.ref == 'refs/heads/main' }}
+
+      - name: Build & push backend
+        uses: docker/build-push-action@v6
+        with:
+          context:    MeetTrack-main
+          file:       MeetTrack-main/backend/Dockerfile
+          push:       true
+          tags:       ${{ steps.meta-backend.outputs.tags }}
+          labels:     ${{ steps.meta-backend.outputs.labels }}
+          cache-from: type=gha
+          cache-to:   type=gha,mode=max
+          target:     runtime
+
+      - name: Extract metadata (frontend)
+        id: meta-frontend
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-frontend
+          tags: |
+            type=ref,event=branch
+            type=sha,prefix=sha-
+            type=raw,value=latest,enable=${{ github.ref == 'refs/heads/main' }}
+
+      - name: Build & push frontend
+        uses: docker/build-push-action@v6
+        with:
+          context:    MeetTrack-main/frontend
+          file:       MeetTrack-main/frontend/Dockerfile
+          push:       true
+          tags:       ${{ steps.meta-frontend.outputs.tags }}
+          labels:     ${{ steps.meta-frontend.outputs.labels }}
+          cache-from: type=gha
+          cache-to:   type=gha,mode=max
+          target:     runtime
+          build-args: |
+            VITE_API_URL=${{ vars.VITE_API_URL }}
+            VITE_API_BASE_URL=${{ vars.VITE_API_BASE_URL }}
+
+# ── Job 6: API smoke tests ────────────────────────────────────────────────────
+  api-smoke-test:
+    name: API Smoke Tests
+    runs-on: ubuntu-latest
+    needs: docker-build
+    if: github.ref == 'refs/heads/main'
+
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_USER:     outcomex
+          POSTGRES_PASSWORD: outcomex
+          POSTGRES_DB:       outcomex
+        options: >-
+          --health-cmd "pg_isready -U outcomex"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432:5432
+
+      redis:
+        image: redis:7-alpine
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 6379:6379
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Enable pgvector
+        run: |
+          PGPASSWORD=outcomex psql -h localhost -U outcomex -d outcomex \
+            -c "CREATE EXTENSION IF NOT EXISTS vector;"
+
+      - name: Start backend container
+        run: |
+          docker run -d \
+            --name outcomex-api-test \
+            --network host \
+            -e DATABASE_URL=postgresql://outcomex:outcomex@localhost:5432/outcomex \
+            -e REDIS_URL=redis://localhost:6379/0 \
+            -e SECRET_KEY=smoke-test-secret \
+            -e ENVIRONMENT=test \
+            ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-backend:latest
+
+      - name: Wait for backend
+        run: |
+          for i in $(seq 1 30); do
+            if curl -sf http://localhost:8000/health; then
+              echo "Backend is up"
+              exit 0
+            fi
+            echo "Waiting... ($i/30)"
+            sleep 3
+          done
+          echo "Backend failed to start"
+          docker logs outcomex-api-test
+          exit 1
+
+      - name: Run API smoke tests
+        run: |
+          pip install httpx pytest pytest-asyncio
+          pytest MeetTrack-main/tests/smoke/ -v --tb=short
+        env:
+          API_BASE_URL: http://localhost:8000
+
+      - name: Dump logs on failure
+        if: failure()
+        run: docker logs outcomex-api-test
+
+# ── Job 7: Deploy to Render ───────────────────────────────────────────────────
+  deploy:
+    name: Deploy to Render
+    runs-on: ubuntu-latest
+    needs: api-smoke-test
+    if: github.ref == 'refs/heads/main'
+    environment: production
+
+    steps:
+      - name: Trigger Render deploy (backend)
+        run: |
+          curl -sf -X POST \
+            -H "Authorization: Bearer ${{ secrets.RENDER_API_KEY }}" \
+            "https://api.render.com/v1/services/${{ secrets.RENDER_BACKEND_SERVICE_ID }}/deploys" \
+            -H "Content-Type: application/json" \
+            -d '{"clearCache": false}'
+
+      - name: Trigger Render deploy (frontend)
+        run: |
+          curl -sf -X POST \
+            -H "Authorization: Bearer ${{ secrets.RENDER_API_KEY }}" \
+            "https://api.render.com/v1/services/${{ secrets.RENDER_FRONTEND_SERVICE_ID }}/deploys" \
+            -H "Content-Type: application/json" \
+            -d '{"clearCache": false}'
+
+      - name: Wait for backend health
+        run: |
+          for i in $(seq 1 20); do
+            STATUS=$(curl -sf "${{ vars.BACKEND_URL }}/health" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('status',''))" 2>/dev/null || echo "")
+            if [ "$STATUS" = "healthy" ]; then
+              echo "✅ Backend healthy"
+              exit 0
+            fi
+            echo "Waiting for backend... ($i/20)"
+            sleep 15
+          done
+          echo "❌ Backend health check failed after deploy"
+          exit 1
+
+      - name: Notify deployment
+        if: always()
+        run: |
+          echo "Deploy status: ${{ job.status }}"
+          echo "Commit: ${{ github.sha }}"
+          echo "Branch: ${{ github.ref_name }}"

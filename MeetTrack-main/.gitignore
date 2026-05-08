@@ -6,6 +6,8 @@ __pycache__/
 
 # Environment
 .env
+.env.local
+.env.*.local
 
 # Uploads / media
 uploads/
@@ -13,6 +15,7 @@ uploads/
 
 # Logs
 *.log
+logs/
 
 # OS
 .DS_Store
@@ -22,5 +25,19 @@ Thumbs.db
 .vscode/
 .idea/
 
-#env
-.env
+# Docker
+ssl/
+*.pem
+*.key
+*.crt
+
+# Test artifacts
+.pytest_cache/
+.coverage
+htmlcov/
+tests/results/
+
+# Build artifacts
+dist/
+build/
+*.egg-info/

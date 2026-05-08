@@ -1,0 +1,45 @@
+[tool.ruff]
+target-version = "py311"
+line-length    = 100
+exclude = [
+    ".venv", "venv", "__pycache__", ".git",
+    "migrations", "*.egg-info",
+]
+
+[tool.ruff.lint]
+select = [
+    "E",   # pycodestyle errors
+    "W",   # pycodestyle warnings
+    "F",   # pyflakes
+    "I",   # isort
+    "B",   # flake8-bugbear
+    "UP",  # pyupgrade
+]
+ignore = [
+    "E501",  # line too long (handled by formatter)
+    "B008",  # do not perform function calls in default arguments (FastAPI pattern)
+    "B904",  # raise from exc (too strict for existing code)
+    "UP007", # use X | Y for union types (Python 3.9 compat)
+]
+
+[tool.ruff.lint.isort]
+known-first-party = ["backend"]
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+
+[tool.pytest.ini_options]
+testpaths    = ["tests"]
+asyncio_mode = "auto"
+timeout      = 60
+addopts      = "-v --tb=short"
+filterwarnings = [
+    "ignore::DeprecationWarning",
+    "ignore::PendingDeprecationWarning",
+]
+
+[tool.mypy]
+python_version         = "3.11"
+ignore_missing_imports = true
+strict                 = false

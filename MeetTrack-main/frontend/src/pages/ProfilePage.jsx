@@ -3,6 +3,7 @@ import { useState, useEffect } from "react";
 import { BriefcaseBusiness, Globe, Mail, MapPin, User, Save, X, Plus, Check, AlertCircle } from "lucide-react";
 import { buttonHoverProps, fadeInProps, subtle } from "../lib/motionPresets";
 import useAuth from "../context/useAuth";
+import IntegrationsPanel from "../components/IntegrationsPanel";
 
 export default function ProfilePage() {
   const { user } = useAuth();
@@ -487,6 +488,11 @@ export default function ProfilePage() {
                 placeholder="UTC, EST, PST, etc."
               />
             </div>
+          </Section>
+
+          {/* 4️⃣ Integrations */}
+          <Section title="Integrations" icon="🔗">
+            <IntegrationsPanel />
           </Section>
         </div>
       </Motion.section>

@@ -45,6 +45,15 @@ spacy==3.7.6
 pgvector==0.3.6
 chromadb==0.5.23
 
+# ── Celery + Redis (distributed task queue) ───────────────────────────────────
+celery==5.4.0
+redis==5.2.1
+kombu==5.4.2
+billiard==4.2.1
+vine==5.1.0
+# Celery monitoring (Flower)
+flower==2.0.1
+
 # Note: openai-whisper is NOT installed on the server.
 # Audio transcription uses local Whisper (install separately for local dev).
 # On the deployed server, use the transcript paste input instead.

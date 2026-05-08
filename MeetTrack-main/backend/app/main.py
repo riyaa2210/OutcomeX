@@ -21,6 +21,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 # Import models (important)
 from backend.models import user, meeting, action_item, result, webhook_log
+from backend.models.task_log import TaskLog
 from backend.models.user import User
 
 # Routes
@@ -34,6 +35,7 @@ from backend.routes.webhook_routes import router as webhook_router
 from backend.routes.rag_routes import router as rag_router
 from backend.routes.live_routes import router as live_router
 from backend.routes.analytics_routes import router as analytics_router
+from backend.routes.task_status_routes import router as task_status_router
 
 # Schemas & CRUD
 from backend.app import schemas, crud
@@ -293,3 +295,4 @@ app.include_router(webhook_router)
 app.include_router(rag_router)
 app.include_router(live_router)
 app.include_router(analytics_router)
+app.include_router(task_status_router)

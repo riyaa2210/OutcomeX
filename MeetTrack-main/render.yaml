@@ -8,11 +8,13 @@ services:
     startCommand: uvicorn backend.app.main:app --host 0.0.0.0 --port $PORT
     envVars:
       - key: DATABASE_URL
-        sync: false          # paste Render PostgreSQL internal URL
+        sync: false
       - key: SECRET_KEY
-        generateValue: true  # auto-generated secure value
+        generateValue: true
       - key: GEMINI_API_KEY
         sync: false
+      - key: REDIS_URL
+        sync: false          # paste Render Redis internal URL
       - key: AWS_REGION
         value: ap-south-1
       - key: AWS_ACCESS_KEY_ID
@@ -26,11 +28,76 @@ services:
       - key: USE_AWS_TRANSCRIBE
         value: "false"
       - key: CORS_ORIGINS
-        sync: false          # set to your frontend Render URL after deploy
+        sync: false
       - key: N8N_WEBHOOK_URL
         sync: false
       - key: COLAB_WHISPER_URL
-        sync: false          # your localtunnel/ngrok URL from Colab
+        sync: false
+      - key: ACTIVEPIECES_WEBHOOK_URL
+        sync: false
+      - key: ACTIVEPIECES_SECRET
+        sync: false
+
+  # ── Celery Worker ──────────────────────────────────────────
+  - type: worker
+    name: meettrack-celery-worker
+    runtime: python
+    rootDir: MeetTrack-main
+    buildCommand: pip install -r requirements.txt && python -m spacy download en_core_web_sm
+    startCommand: celery -A backend.worker.celery_app worker -Q transcription,ai_extraction,email_delivery,analytics,webhooks --loglevel=info --concurrency=4
+    envVars:
+      - key: DATABASE_URL
+        sync: false
+      - key: SECRET_KEY
+        sync: false
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: REDIS_URL
+        sync: false
+      - key: AWS_REGION
+        value: ap-south-1
+      - key: AWS_ACCESS_KEY_ID
+        sync: false
+      - key: AWS_SECRET_ACCESS_KEY
+        sync: false
+      - key: SNS_TOPIC_ARN
+        sync: false
+      - key: COLAB_WHISPER_URL
+        sync: false
+      - key: ACTIVEPIECES_WEBHOOK_URL
+        sync: false
+      - key: ACTIVEPIECES_SECRET
+        sync: false
+
+  # ── Celery Beat (scheduler) ────────────────────────────────
+  - type: worker
+    name: meettrack-celery-beat
+    runtime: python
+    rootDir: MeetTrack-main
+    buildCommand: pip install -r requirements.txt
+    startCommand: celery -A backend.worker.celery_app beat --loglevel=info
+    envVars:
+      - key: DATABASE_URL
+        sync: false
+      - key: REDIS_URL
+        sync: false
+      - key: GEMINI_API_KEY
+        sync: false
+
+  # ── Flower (task monitoring UI) ────────────────────────────
+  - type: web
+    name: meettrack-flower
+    runtime: python
+    rootDir: MeetTrack-main
+    buildCommand: pip install -r requirements.txt
+    startCommand: celery -A backend.worker.celery_app flower --port=$PORT --basic_auth=${FLOWER_USER}:${FLOWER_PASSWORD}
+    envVars:
+      - key: REDIS_URL
+        sync: false
+      - key: FLOWER_USER
+        value: admin
+      - key: FLOWER_PASSWORD
+        generateValue: true
 
   # ── Frontend (React/Vite) ──────────────────────────────────
   - type: web
@@ -41,7 +108,7 @@ services:
     staticPublishPath: dist
     envVars:
       - key: VITE_API_BASE_URL
-        sync: false          # set to your backend Render URL
+        sync: false
     routes:
       - type: rewrite
         source: /*

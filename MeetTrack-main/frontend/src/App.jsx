@@ -13,6 +13,7 @@ import ProfilePage from "./pages/ProfilePage";
 import AskMeetingsPage from "./pages/AskMeetingsPage";
 import LiveMeetingPage from "./pages/LiveMeetingPage";
 import AnalyticsDashboardPage from "./pages/AnalyticsDashboardPage";
+import TaskMonitorPage from "./pages/TaskMonitorPage";
 
 function ProtectedRoute({ children }) {
   const { user } = useAuth();
@@ -40,6 +41,7 @@ export default function App() {
         <Route path="/ask" element={<AskMeetingsPage />} />
         <Route path="/live/:meetingId" element={<LiveMeetingPage />} />
         <Route path="/analytics" element={<AnalyticsDashboardPage />} />
+        <Route path="/tasks" element={<TaskMonitorPage />} />
         <Route path="/profile" element={<ProfilePage />} />
       </Route>
       <Route path="*" element={<NotFoundPage />} />

@@ -25,6 +25,8 @@ from backend.models.task_log import TaskLog
 from backend.models.user import User
 # LLM metrics table — must be imported before create_all
 from backend.services.llm.metrics import LLMCallLog  # noqa: F401
+# Evaluation tables — must be imported before create_all
+from backend.models.evaluation import EvalResult, HumanFeedback, BenchmarkSample  # noqa: F401
 
 # Routes
 from backend.routes.upload_routes import router as upload_router
@@ -39,6 +41,7 @@ from backend.routes.live_routes import router as live_router
 from backend.routes.analytics_routes import router as analytics_router
 from backend.routes.task_status_routes import router as task_status_router
 from backend.routes.llm_admin_routes import router as llm_admin_router
+from backend.routes.eval_routes import router as eval_router
 
 # Schemas & CRUD
 from backend.app import schemas, crud
@@ -300,3 +303,4 @@ app.include_router(live_router)
 app.include_router(analytics_router)
 app.include_router(task_status_router)
 app.include_router(llm_admin_router)
+app.include_router(eval_router)

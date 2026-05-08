@@ -1,4 +1,4 @@
-import { Activity, BarChart2, Brain, History, LayoutDashboard, LogOut, MessageSquare, Radio, User } from "lucide-react";
+import { Activity, BarChart2, Brain, FlaskConical, History, LayoutDashboard, LogOut, MessageSquare, Radio, User } from "lucide-react";
 import { NavLink, Outlet, useNavigate } from "react-router-dom";
 import BrandLogo from "../components/BrandLogo";
 import ThemeToggle from "../components/ThemeToggle";
@@ -12,6 +12,7 @@ const items = [
   { to: "/analytics", label: "Analytics", icon: BarChart2        },
   { to: "/tasks",     label: "Tasks",     icon: Activity          },
   { to: "/llm-admin", label: "AI Admin",  icon: Brain             },
+  { to: "/eval",      label: "Eval",      icon: FlaskConical      },
   { to: "/profile",   label: "Profile",   icon: User             },
 ];
 

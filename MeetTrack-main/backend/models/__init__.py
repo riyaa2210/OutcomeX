@@ -7,3 +7,4 @@ from .task import Task
 from .webhook_log import WebhookLog
 from .meeting_chunk import MeetingChunk, QueryHistory
 from .task_log import TaskLog, TaskState
+from .evaluation import EvalResult, HumanFeedback, BenchmarkSample

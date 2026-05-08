@@ -1,40 +1,26 @@
 """
-RAG API Routes
-==============
+RAG Routes — Ask Meetings + Semantic Search
+===========================================
 
-POST /rag/upload          — ingest a document (PDF/DOCX/TXT)
-POST /rag/query           — ask a question against uploaded documents
-POST /rag/meeting-summary — extract intelligence from a transcript
-GET  /rag/stats           — index stats (files, chunk count)
-DELETE /rag/document      — remove a document from the index
+POST /ask-meetings          — natural language query over all meetings
+GET  /semantic-search       — keyword + vector search
+GET  /rag/query-history     — past queries and answers
+POST /rag/index/{meeting_id} — manually re-index a meeting
 """
-
 import logging
-import os
-import shutil
-import time
-from pathlib import Path
+from typing import Optional
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
+from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
-from backend.app.auth import get_current_user
 from backend.app.database import SessionLocal
-from backend.services.rag.chunker import chunk_pages
-from backend.services.rag.document_processor import extract_text
-from backend.services.rag.embedder import embed_texts
-from backend.services.rag.rag_pipeline import analyse_meeting, query_rag
-from backend.services.rag.vector_store import add_chunks, delete_by_file, get_stats
-from backend.services.n8n_service import trigger_n8n_workflow
+from backend.app.auth import get_current_user
+from backend.services.rag_service import ask_meetings, similarity_search, index_meeting
+from backend.models.meeting_chunk import QueryHistory
 
 logger = logging.getLogger(__name__)
-router = APIRouter(prefix="/rag", tags=["RAG"])
-
-RAG_UPLOAD_DIR = Path("rag_uploads")
-RAG_UPLOAD_DIR.mkdir(exist_ok=True)
-
-ALLOWED_EXTENSIONS = {".pdf", ".docx", ".txt"}
+router = APIRouter(prefix="/rag", tags=["RAG / Ask Meetings"])
 
 
 def get_db():
@@ -45,216 +31,168 @@ def get_db():
         db.close()
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# POST /rag/upload
-# ─────────────────────────────────────────────────────────────────────────────
+# ── Request / Response schemas ────────────────────────────────────────────────
 
-@router.post("/upload")
-async def upload_document(
-    file: UploadFile = File(...),
-    current_user=Depends(get_current_user),
-):
-    """
-    Ingest a document into the RAG vector store.
-
-    Steps:
-      1. Save file to disk
-      2. Extract text (PDF/DOCX/TXT)
-      3. Split into overlapping chunks
-      4. Embed chunks with sentence-transformers
-      5. Store in FAISS index
-
-    Returns chunk count and processing time.
-    """
-    suffix = Path(file.filename).suffix.lower()
-    if suffix not in ALLOWED_EXTENSIONS:
-        raise HTTPException(
-            status_code=400,
-            detail=f"Unsupported file type '{suffix}'. Allowed: PDF, DOCX, TXT"
-        )
-
-    # Save uploaded file
-    save_path = RAG_UPLOAD_DIR / file.filename
-    with open(save_path, "wb") as f:
-        shutil.copyfileobj(file.file, f)
-
-    t0 = time.time()
-
-    try:
-        # Extract text
-        logger.info(f"[RAG Upload] Extracting: {file.filename}")
-        pages = extract_text(str(save_path))
-
-        if not pages:
-            raise HTTPException(status_code=422, detail="No text could be extracted from the file.")
-
-        # Chunk
-        chunks = chunk_pages(pages, file_name=file.filename)
-
-        if not chunks:
-            raise HTTPException(status_code=422, detail="Document produced no chunks after processing.")
-
-        # Embed
-        texts = [c["text"] for c in chunks]
-        embeddings = embed_texts(texts)
-
-        # Store
-        add_chunks(chunks, embeddings)
-
-        elapsed = round(time.time() - t0, 2)
-        logger.info(f"[RAG Upload] Done: {file.filename} → {len(chunks)} chunks in {elapsed}s")
-
-        return {
-            "status":       "success",
-            "file_name":    file.filename,
-            "pages":        len(pages),
-            "chunks":       len(chunks),
-            "elapsed_sec":  elapsed,
-            "message":      f"Document indexed successfully. {len(chunks)} chunks ready for querying.",
-        }
-
-    except HTTPException:
-        raise
-    except Exception as exc:
-        logger.error(f"[RAG Upload] Failed: {exc}")
-        raise HTTPException(status_code=500, detail=f"Ingestion failed: {str(exc)}")
+class AskRequest(BaseModel):
+    query: str
+    meeting_id: Optional[int] = None   # scope to a specific meeting
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# POST /rag/query
-# ─────────────────────────────────────────────────────────────────────────────
-
-class QueryRequest(BaseModel):
-    question: str
-    top_k: int = 5   # number of chunks to retrieve
+class AskResponse(BaseModel):
+    answer:      str
+    sources:     list
+    confidence:  float
+    chunks_used: int
 
 
-@router.post("/query")
-async def query_documents(
-    request: QueryRequest,
-    current_user=Depends(get_current_user),
-):
-    """
-    Ask a question against all indexed documents.
+# ── POST /ask-meetings ────────────────────────────────────────────────────────
 
-    Returns:
-      - answer:      LLM-generated answer grounded in retrieved chunks
-      - sources:     Which document chunks were used
-      - chunks_used: How many chunks contributed to the answer
-    """
-    if not request.question.strip():
-        raise HTTPException(status_code=400, detail="Question cannot be empty.")
-
-    if request.top_k < 1 or request.top_k > 20:
-        raise HTTPException(status_code=400, detail="top_k must be between 1 and 20.")
-
-    t0 = time.time()
-
-    try:
-        result = query_rag(request.question, top_k=request.top_k)
-        result["elapsed_sec"] = round(time.time() - t0, 2)
-        return result
-
-    except Exception as exc:
-        logger.error(f"[RAG Query] Failed: {exc}")
-        raise HTTPException(status_code=500, detail=f"Query failed: {str(exc)}")
-
-
-# ─────────────────────────────────────────────────────────────────────────────
-# POST /rag/meeting-summary
-# ─────────────────────────────────────────────────────────────────────────────
-
-class MeetingRequest(BaseModel):
-    transcript: str
-    send_to_n8n: bool = False   # optionally trigger n8n webhook
-
-
-@router.post("/meeting-summary")
-async def meeting_summary(
-    request: MeetingRequest,
+@router.post("/ask-meetings", response_model=AskResponse)
+async def ask_meetings_endpoint(
+    request: AskRequest,
     current_user=Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
     """
-    Extract structured intelligence from a meeting transcript.
+    Natural language query over all your meetings.
 
-    Returns:
-      - summary
-      - key_points
-      - decisions
-      - action_items (with assignee + deadline)
-
-    Optionally triggers n8n webhook for email/notification.
+    Examples:
+      "What tasks were assigned to Alice?"
+      "Which meetings discussed JWT authentication?"
+      "What decisions were made about the deployment?"
+      "Summarise all action items from last week"
     """
-    if not request.transcript.strip():
-        raise HTTPException(status_code=400, detail="Transcript cannot be empty.")
+    if not request.query or len(request.query.strip()) < 3:
+        raise HTTPException(status_code=400, detail="Query too short")
 
-    if len(request.transcript) < 50:
-        raise HTTPException(status_code=400, detail="Transcript too short to analyse.")
+    if len(request.query) > 500:
+        raise HTTPException(status_code=400, detail="Query too long (max 500 chars)")
 
-    t0 = time.time()
+    result = ask_meetings(
+        db         = db,
+        query      = request.query.strip(),
+        user_id    = current_user.id,
+        meeting_id = request.meeting_id,
+    )
 
-    try:
-        result = analyse_meeting(request.transcript)
-        result["elapsed_sec"] = round(time.time() - t0, 2)
-
-        # Optionally fire n8n webhook
-        if request.send_to_n8n:
-            try:
-                trigger_n8n_workflow(
-                    db=db,
-                    meeting_id=0,
-                    transcript=request.transcript,
-                    structured=result,
-                    event_type="rag_meeting_summary",
-                )
-                result["n8n_triggered"] = True
-            except Exception as n8n_exc:
-                logger.warning(f"[RAG Meeting] n8n trigger failed: {n8n_exc}")
-                result["n8n_triggered"] = False
-
-        return result
-
-    except Exception as exc:
-        logger.error(f"[RAG Meeting] Failed: {exc}")
-        raise HTTPException(status_code=500, detail=f"Meeting analysis failed: {str(exc)}")
+    return AskResponse(**result)
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# GET /rag/stats
-# ─────────────────────────────────────────────────────────────────────────────
+# ── GET /semantic-search ──────────────────────────────────────────────────────
 
-@router.get("/stats")
-async def rag_stats(current_user=Depends(get_current_user)):
-    """Return current index statistics."""
-    try:
-        return get_stats()
-    except Exception as exc:
-        raise HTTPException(status_code=500, detail=str(exc))
-
-
-# ─────────────────────────────────────────────────────────────────────────────
-# DELETE /rag/document
-# ─────────────────────────────────────────────────────────────────────────────
-
-class DeleteRequest(BaseModel):
-    file_name: str
-
-
-@router.delete("/document")
-async def delete_document(
-    request: DeleteRequest,
+@router.get("/semantic-search")
+async def semantic_search(
+    q: str = Query(..., description="Search query"),
+    meeting_id: Optional[int] = Query(None, description="Filter by meeting"),
+    chunk_type: Optional[str] = Query(None, description="transcript|summary|decision"),
+    top_k: int = Query(5, ge=1, le=20),
     current_user=Depends(get_current_user),
+    db: Session = Depends(get_db),
 ):
-    """Remove all chunks for a specific document from the index."""
-    removed = delete_by_file(request.file_name)
-    if removed == 0:
-        raise HTTPException(
-            status_code=404,
-            detail=f"No chunks found for file: {request.file_name}"
-        )
+    """
+    Semantic search across all meeting chunks.
+    Returns ranked chunks with similarity scores.
+    """
+    if not q or len(q.strip()) < 2:
+        raise HTTPException(status_code=400, detail="Query too short")
+
+    chunks = similarity_search(
+        db         = db,
+        query      = q.strip(),
+        user_id    = current_user.id,
+        meeting_id = meeting_id,
+        chunk_type = chunk_type,
+        top_k      = top_k,
+    )
+
     return {
-        "status":   "success",
-        "removed":  removed,
-        "file_name": request.file_name,
+        "query":   q,
+        "results": chunks,
+        "count":   len(chunks),
+    }
+
+
+# ── GET /rag/query-history ────────────────────────────────────────────────────
+
+@router.get("/query-history")
+async def get_query_history(
+    limit: int = Query(20, ge=1, le=100),
+    current_user=Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Return the user's past queries and AI answers."""
+    records = (
+        db.query(QueryHistory)
+        .filter(QueryHistory.user_id == current_user.id)
+        .order_by(QueryHistory.created_at.desc())
+        .limit(limit)
+        .all()
+    )
+
+    return [
+        {
+            "id":         r.id,
+            "query":      r.query,
+            "answer":     r.answer,
+            "confidence": r.confidence,
+            "sources":    r.sources or [],
+            "created_at": r.created_at,
+        }
+        for r in records
+    ]
+
+
+# ── POST /rag/index/{meeting_id} ──────────────────────────────────────────────
+
+@router.post("/index/{meeting_id}")
+async def index_meeting_endpoint(
+    meeting_id: int,
+    current_user=Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """
+    Manually re-index a meeting's transcript for RAG search.
+    Useful after editing a transcript or if indexing failed.
+    """
+    from backend.models.meeting import Meeting
+    from backend.models.result import Result
+
+    meeting = db.query(Meeting).filter(
+        Meeting.id == meeting_id,
+        Meeting.user_id == current_user.id,
+    ).first()
+
+    if not meeting:
+        raise HTTPException(status_code=404, detail="Meeting not found")
+
+    if not meeting.transcript:
+        raise HTTPException(status_code=400, detail="Meeting has no transcript to index")
+
+    # Get summary + decisions if available
+    result = db.query(Result).filter(Result.meeting_id == meeting_id).first()
+    summary   = ""
+    decisions = []
+    if result and result.summary:
+        import json
+        try:
+            parsed = json.loads(result.summary)
+            summary   = parsed.get("summary", "")
+            decisions = parsed.get("decisions", [])
+        except Exception:
+            summary = result.summary
+
+    chunks_stored = index_meeting(
+        db         = db,
+        meeting_id = meeting_id,
+        user_id    = current_user.id,
+        transcript = meeting.transcript,
+        title      = meeting.title or f"Meeting #{meeting_id}",
+        summary    = summary,
+        decisions  = decisions,
+    )
+
+    return {
+        "status":        "indexed",
+        "meeting_id":    meeting_id,
+        "chunks_stored": chunks_stored,
     }

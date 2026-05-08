@@ -23,6 +23,7 @@ from backend.models.action_item import ActionItem
 from backend.services.transcribe_service import transcribe_audio
 from backend.services.summary_service import generate_structured_summary
 from backend.services.automation_service import trigger_automation as trigger_n8n_workflow
+from backend.services.rag_service import index_meeting as rag_index_meeting
 
 logger = logging.getLogger(__name__)
 
@@ -196,6 +197,19 @@ async def process_meeting(
             "meeting_processed",
         )
         logger.info("[Process] n8n trigger queued as background task")
+
+        # Queue RAG indexing in background
+        background_tasks.add_task(
+            rag_index_meeting,
+            db,
+            new_meeting.id,
+            current_user.id,
+            transcript,
+            new_meeting.title or "",
+            structured.get("summary", ""),
+            structured.get("decisions", []),
+        )
+        logger.info("[Process] RAG indexing queued as background task")
 
         # ------------------------------------------------------------------
         # Step 6 — Return structured response

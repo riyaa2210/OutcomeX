@@ -5,3 +5,4 @@ from .action_item import ActionItem
 from .result import Result
 from .task import Task
 from .webhook_log import WebhookLog
+from .meeting_chunk import MeetingChunk, QueryHistory

@@ -10,6 +10,7 @@ import HistoryPage from "./pages/HistoryPage";
 import LandingPage from "./pages/LandingPage";
 import NotFoundPage from "./pages/NotFoundPage";
 import ProfilePage from "./pages/ProfilePage";
+import AskMeetingsPage from "./pages/AskMeetingsPage";
 
 function ProtectedRoute({ children }) {
   const { user } = useAuth();
@@ -34,6 +35,7 @@ export default function App() {
       >
         <Route path="/dashboard" element={<DashboardPage />} />
         <Route path="/history" element={<HistoryPage />} />
+        <Route path="/ask" element={<AskMeetingsPage />} />
         <Route path="/profile" element={<ProfilePage />} />
       </Route>
       <Route path="*" element={<NotFoundPage />} />

@@ -1,4 +1,4 @@
-import { History, LayoutDashboard, LogOut, User } from "lucide-react";
+import { History, LayoutDashboard, LogOut, MessageSquare, User } from "lucide-react";
 import { NavLink, Outlet, useNavigate } from "react-router-dom";
 import BrandLogo from "../components/BrandLogo";
 import ThemeToggle from "../components/ThemeToggle";
@@ -6,8 +6,9 @@ import useAuth from "../context/useAuth";
 
 const items = [
   { to: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
-  { to: "/history", label: "History", icon: History },
-  { to: "/profile", label: "Profile", icon: User },
+  { to: "/history",   label: "History",   icon: History          },
+  { to: "/ask",       label: "Ask AI",    icon: MessageSquare    },
+  { to: "/profile",   label: "Profile",   icon: User             },
 ];
 
 const navClass = ({ isActive }) =>

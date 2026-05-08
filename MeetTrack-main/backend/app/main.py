@@ -32,6 +32,7 @@ from backend.routes.meeting_routes import router as meeting_router
 from backend.routes.task_routes import router as task_router
 from backend.routes.webhook_routes import router as webhook_router
 from backend.routes.rag_routes import router as rag_router
+from backend.routes.live_routes import router as live_router
 
 # Schemas & CRUD
 from backend.app import schemas, crud
@@ -289,3 +290,4 @@ app.include_router(meeting_router)
 app.include_router(task_router)
 app.include_router(webhook_router)
 app.include_router(rag_router)
+app.include_router(live_router)

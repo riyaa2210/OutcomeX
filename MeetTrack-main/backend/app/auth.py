@@ -30,6 +30,15 @@ def verify_token(token: str):
         return None
 
 
+def decode_token(token: str) -> dict:
+    """Decode and validate a JWT token. Raises ValueError on failure."""
+    try:
+        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        return payload
+    except JWTError as exc:
+        raise ValueError(f"Invalid token: {exc}")
+
+
 def get_current_user(token: str = Depends(oauth2_scheme)):
     payload = verify_token(token)
 

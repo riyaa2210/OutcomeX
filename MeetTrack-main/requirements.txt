@@ -38,6 +38,9 @@ jmespath==1.1.0
 # AI
 google-genai==1.16.0
 
+# NLP — Advanced hybrid pipeline
+spacy==3.7.6
+
 # RAG / Vector search
 pgvector==0.3.6
 chromadb==0.5.23

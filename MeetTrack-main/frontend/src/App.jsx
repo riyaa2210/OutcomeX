@@ -16,6 +16,7 @@ import AnalyticsDashboardPage from "./pages/AnalyticsDashboardPage";
 import TaskMonitorPage from "./pages/TaskMonitorPage";
 import LLMAdminPage from "./pages/LLMAdminPage";
 import EvalDashboardPage from "./pages/EvalDashboardPage";
+import SecurityDashboardPage from "./pages/SecurityDashboardPage";
 
 function ProtectedRoute({ children }) {
   const { user } = useAuth();
@@ -46,6 +47,7 @@ export default function App() {
         <Route path="/tasks" element={<TaskMonitorPage />} />
         <Route path="/llm-admin" element={<LLMAdminPage />} />
         <Route path="/eval" element={<EvalDashboardPage />} />
+        <Route path="/security" element={<SecurityDashboardPage />} />
         <Route path="/profile" element={<ProfilePage />} />
       </Route>
       <Route path="*" element={<NotFoundPage />} />

@@ -4,6 +4,7 @@ from backend.app import schemas
 from backend.models.action_item import ActionItem
 import json
 
+
 # ✅ REGISTER
 def create_user(db: Session, user: schemas.UserCreate):
     existing_user = db.query(User).filter(User.email == user.email).first()
@@ -11,11 +12,12 @@ def create_user(db: Session, user: schemas.UserCreate):
     if existing_user:
         return None
 
+    from backend.app.auth import hash_password
     db_user = User(
         full_name=user.full_name,
         email=user.email,
-        password=user.password,
-        role=user.role
+        password=hash_password(user.password),  # bcrypt hash
+        role=user.role,
     )
 
     db.add(db_user)
@@ -32,7 +34,8 @@ def login_user(db: Session, user: schemas.UserLogin):
     if not db_user:
         return None
 
-    if db_user.password != user.password:
+    from backend.app.auth import verify_password
+    if not verify_password(user.password, db_user.password):
         return None
 
     return db_user

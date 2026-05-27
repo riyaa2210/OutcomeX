@@ -36,19 +36,6 @@ Most projects stop at “LLM summary.”
 
 👉 This is what real AI products look like.
 
----
-# 📸 Screenshots
-
-![Landing](screenshots/landing.png)
-![Dashboard](screenshots/dashboard.png)
-![History](screenshots/history.png)
-![Profile](screenshots/profile.png)
-
-# 🎥 Demo
-
-[Demo ](https://outcomex-1.onrender.com)
-
----
 
 
 # 🧠 AI / NLP Pipeline

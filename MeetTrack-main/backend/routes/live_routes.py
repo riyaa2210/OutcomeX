@@ -97,8 +97,10 @@ async def live_meeting_ws(
             return
 
         # Step 2 — Join room
-        # Re-accept is not needed since we already accepted above
-        # Register in manager directly
+        # Register connection in manager
+        if room_id not in manager.rooms:
+            from collections import defaultdict
+            manager.rooms[room_id] = {}
         manager.rooms[room_id][user_id] = websocket
         manager.user_meta[user_id] = {
             "name":      user_name,

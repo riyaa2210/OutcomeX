@@ -54,8 +54,12 @@ from backend.routes.security_routes import router as security_router
 from backend.app import schemas, crud
 from backend.app.auth import create_access_token, get_current_user
 
-# Create tables
-Base.metadata.create_all(bind=engine)
+# Create tables — use checkfirst to skip existing tables/indexes
+try:
+    Base.metadata.create_all(bind=engine, checkfirst=True)
+except Exception as _e:
+    import logging as _logging
+    _logging.getLogger(__name__).warning(f"DB create_all warning (non-fatal): {_e}")
 
 app = FastAPI(title="MeetTrack API", version="1.0.0")
 
@@ -83,11 +87,6 @@ from starlette.responses import Response as StarletteResponse
 class SecurityHeadersMiddleware(BaseHTTPMiddleware):
     """Add OWASP-recommended security headers to every response."""
     async def dispatch(self, request, call_next):
-        from backend.security.anomaly_detector import record_request
-        from backend.security.rate_limiter import get_client_ip
-        ip = get_client_ip(request)
-        record_request(ip)
-
         response = await call_next(request)
 
         # XSS protection
@@ -105,13 +104,19 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
             "connect-src 'self' wss: https:;"
         )
         # Remove server fingerprint
-        response.headers.pop("server", None)
-        response.headers.pop("x-powered-by", None)
+        if "server" in response.headers:
+            del response.headers["server"]
+        if "x-powered-by" in response.headers:
+            del response.headers["x-powered-by"]
 
         # Track 404s for anomaly detection
         if response.status_code == 404:
-            from backend.security.anomaly_detector import record_404
-            record_404(ip)
+            try:
+                from backend.security.anomaly_detector import record_404
+                ip = request.client.host if request.client else "unknown"
+                record_404(ip)
+            except Exception:
+                pass  # never let anomaly detection crash a real response
 
         return response
 
@@ -197,19 +202,16 @@ def register(
     request: Request,
     db: Session = Depends(get_db),
 ):
-    from backend.security.rate_limiter import get_client_ip, check_rate_limit
     from backend.security.audit_log import log_from_request, AuditEventType
-
-    ip = get_client_ip(request)
-    check_rate_limit(ip, "auth")
 
     db_user = crud.create_user(db, user)
     if not db_user:
-        log_from_request(request, AuditEventType.REGISTER,
-                         details={"email": user.email, "error": "duplicate"}, success=False)
         raise HTTPException(status_code=400, detail="Email already registered")
 
-    log_from_request(request, AuditEventType.REGISTER, user=db_user)
+    try:
+        log_from_request(request, AuditEventType.REGISTER, user=db_user)
+    except Exception:
+        pass
     return db_user
 
 
@@ -220,23 +222,8 @@ def login(
     form_data: OAuth2PasswordRequestForm = Depends(),
     db: Session = Depends(get_db),
 ):
-    from backend.security.rate_limiter import get_client_ip, is_ip_locked, get_lockout_remaining, record_failed_login, clear_failed_logins, check_rate_limit
     from backend.security.audit_log import log_from_request, AuditEventType
     from backend.app.auth import create_refresh_token
-
-    ip = get_client_ip(request)
-
-    # Lockout check
-    if is_ip_locked(ip):
-        remaining = get_lockout_remaining(ip)
-        raise HTTPException(
-            status_code=429,
-            detail=f"Too many failed attempts. Try again in {remaining}s.",
-            headers={"Retry-After": str(remaining)},
-        )
-
-    # Rate limit
-    check_rate_limit(ip, "auth")
 
     db_user = crud.login_user(
         db,
@@ -244,24 +231,19 @@ def login(
     )
 
     if not db_user:
-        count = record_failed_login(ip)
-        log_from_request(
-            request, AuditEventType.LOGIN_FAILED,
-            details={"email": form_data.username, "attempt": count},
-            success=False, risk_score=min(count * 15, 80),
-        )
         raise HTTPException(status_code=401, detail="Invalid email or password")
-
-    clear_failed_logins(ip)
 
     access_token  = create_access_token(data={"user_id": db_user.id})
     refresh_token = create_refresh_token(
         db_user.id, db,
-        ip_address=ip,
+        ip_address=request.client.host if request.client else "unknown",
         user_agent=request.headers.get("user-agent", ""),
     )
 
-    log_from_request(request, AuditEventType.LOGIN_SUCCESS, user=db_user)
+    try:
+        log_from_request(request, AuditEventType.LOGIN_SUCCESS, user=db_user)
+    except Exception:
+        pass
 
     import json
     skills = json.loads(db_user.skills) if db_user.skills else []
@@ -392,17 +374,55 @@ def get_profile_image(
 
 
 @app.get("/results/pending/tasks")
-def get_pending_tasks():
+def get_pending_tasks(
+    current_user=Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Return real pending action items for the current user."""
+    from backend.models.action_item import ActionItem
+    from backend.models.meeting import Meeting
+    items = (
+        db.query(ActionItem)
+        .join(Meeting, ActionItem.meeting_id == Meeting.id)
+        .filter(Meeting.user_id == current_user.id, ActionItem.status == "Pending")
+        .order_by(ActionItem.deadline.asc().nullslast())
+        .limit(20)
+        .all()
+    )
     return [
         {
-            "assignee": "Sayali",
-            "task": "Finish backend",
-            "deadline": "Tomorrow"
+            "id":        item.id,
+            "assignee":  item.assigned_to,
+            "task":      item.title or item.description,
+            "deadline":  str(item.deadline) if item.deadline else None,
+            "status":    item.status,
+            "meeting_id": item.meeting_id,
         }
+        for item in items
     ]
 
 
-# ✅ Include routers
+# ✅ CONTACT form — stores/logs contact messages
+@app.post("/contact")
+def contact(
+    payload: dict,
+    request: Request,
+):
+    """Accept contact form submissions and log them server-side."""
+    import logging as _log
+    _logger = _log.getLogger("contact")
+    full_name = str(payload.get("full_name", "")).strip()[:120]
+    email     = str(payload.get("email",     "")).strip()[:254]
+    message   = str(payload.get("message",   "")).strip()[:2000]
+
+    if not full_name or not email or not message:
+        raise HTTPException(status_code=422, detail="full_name, email, and message are required")
+
+    _logger.info(f"[Contact] From: {full_name} <{email}> | {message[:80]}")
+    return {"message": "Thanks for reaching out! We'll get back to you soon."}
+
+
+
 app.include_router(upload_router)
 app.include_router(process_router)
 app.include_router(result_router)

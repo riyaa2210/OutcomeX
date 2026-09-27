@@ -27,21 +27,32 @@ from fastapi import HTTPException, Request, status
 
 logger = logging.getLogger(__name__)
 
-# ── Redis client ──────────────────────────────────────────────────────────────
-
+# ── Redis — connect once, cache result ────────────────────────────────────────
 _redis_client = None
+_redis_checked = False
 
 
 def _get_redis():
-    global _redis_client
-    if _redis_client is None:
-        try:
-            import redis
-            url = os.getenv("REDIS_URL", "redis://localhost:6379/0")
-            _redis_client = redis.from_url(url, socket_connect_timeout=1, socket_timeout=1)
-            _redis_client.ping()
-        except Exception:
-            _redis_client = None
+    """Return cached Redis client, or None if unavailable. Never retries after first failure."""
+    global _redis_client, _redis_checked
+    if _redis_checked:
+        return _redis_client
+    _redis_checked = True
+    try:
+        import redis as _redis
+        url = os.getenv("REDIS_URL", "redis://localhost:6379/0")
+        client = _redis.from_url(
+            url,
+            socket_connect_timeout=0.3,
+            socket_timeout=0.3,
+            retry_on_timeout=False,
+        )
+        client.ping()
+        _redis_client = client
+        logger.info("[RateLimit] Redis connected")
+    except Exception:
+        _redis_client = None
+        logger.warning("[RateLimit] Redis unavailable — rate limiting disabled (fail-open)")
     return _redis_client
 
 

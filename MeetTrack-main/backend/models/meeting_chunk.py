@@ -18,6 +18,31 @@ except ImportError:
     Vector = None
     PGVECTOR_AVAILABLE = False
 
+# Also check if the DB actually has the vector extension
+# If not, fall back to JSON storage
+import os
+if PGVECTOR_AVAILABLE:
+    try:
+        import psycopg2
+        _db_url = os.getenv("DATABASE_URL", "")
+        if _db_url:
+            _conn = psycopg2.connect(_db_url, connect_timeout=3)
+            _cur = _conn.cursor()
+            _cur.execute("SELECT 1 FROM pg_extension WHERE extname='vector'")
+            if not _cur.fetchone():
+                # Extension not installed — try to create it
+                try:
+                    _cur.execute("CREATE EXTENSION IF NOT EXISTS vector;")
+                    _conn.commit()
+                except Exception:
+                    PGVECTOR_AVAILABLE = False
+                    Vector = None
+            _conn.close()
+    except Exception:
+        # DB not reachable or extension check failed — use JSON fallback
+        PGVECTOR_AVAILABLE = False
+        Vector = None
+
 
 class MeetingChunk(Base):
     __tablename__ = "meeting_chunks"

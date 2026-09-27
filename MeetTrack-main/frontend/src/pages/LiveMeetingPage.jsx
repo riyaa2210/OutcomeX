@@ -2,7 +2,7 @@
  * LiveMeetingPage — Real-time collaborative AI meeting assistant
  *
  * Features:
- *   - Live transcript input (type or paste chunks)
+ *   - Live microphone transcription (Web Speech API — Chrome/Edge)
  *   - Real-time AI summary / decisions / action items
  *   - AI suggestions (blockers, missing deadlines, etc.)
  *   - Collaborative notes
@@ -11,7 +11,7 @@
  *   - Participant list
  *   - Snapshot indicator
  */
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useCallback } from "react";
 import { AnimatePresence, motion as M } from "framer-motion";
 import {
   AlertTriangle, CheckCircle2, Clock, Lightbulb,
@@ -27,6 +27,77 @@ import { easeSoft } from "../lib/motionPresets";
 const AVATAR_COLORS = ["#6366f1","#0891b2","#059669","#d97706","#be185d","#7c3aed"];
 const avColor = n => AVATAR_COLORS[(n?.charCodeAt(0) || 65) % AVATAR_COLORS.length];
 const ini = n => (n || "?").trim().split(/\s+/).map(w => w[0]).join("").toUpperCase().slice(0,2);
+
+/* ── Speech Recognition Hook ─────────────────────────────── */
+function useSpeechRecognition({ onResult, onError }) {
+  const recognitionRef = useRef(null);
+  const [listening, setListening] = useState(false);
+  const [supported, setSupported] = useState(false);
+
+  useEffect(() => {
+    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (SpeechRecognition) {
+      setSupported(true);
+      const rec = new SpeechRecognition();
+      rec.continuous      = true;   // keep listening
+      rec.interimResults  = true;   // show partial results
+      rec.lang            = "en-US";
+      rec.maxAlternatives = 1;
+
+      rec.onresult = (event) => {
+        let finalText = "";
+        for (let i = event.resultIndex; i < event.results.length; i++) {
+          if (event.results[i].isFinal) {
+            finalText += event.results[i][0].transcript + " ";
+          }
+        }
+        if (finalText.trim()) {
+          onResult(finalText.trim());
+        }
+      };
+
+      rec.onerror = (event) => {
+        if (event.error !== "no-speech") {
+          onError?.(`Mic error: ${event.error}`);
+        }
+      };
+
+      rec.onend = () => {
+        // Auto-restart if still supposed to be listening
+        if (recognitionRef.current?._shouldListen) {
+          try { rec.start(); } catch (_) {}
+        } else {
+          setListening(false);
+        }
+      };
+
+      recognitionRef.current = rec;
+    }
+    return () => {
+      recognitionRef.current?._shouldListen && recognitionRef.current?.stop();
+    };
+  }, []);
+
+  const start = useCallback(() => {
+    if (!recognitionRef.current) return;
+    recognitionRef.current._shouldListen = true;
+    try {
+      recognitionRef.current.start();
+      setListening(true);
+    } catch (e) {
+      // already started
+    }
+  }, []);
+
+  const stop = useCallback(() => {
+    if (!recognitionRef.current) return;
+    recognitionRef.current._shouldListen = false;
+    recognitionRef.current.stop();
+    setListening(false);
+  }, []);
+
+  return { listening, supported, start, stop };
+}
 
 /* ── suggestion banner ───────────────────────────────────── */
 function SuggestionBanner({ suggestion, onDismiss }) {
@@ -97,16 +168,69 @@ function LiveActionCard({ item, index }) {
 
 /* ── main page ───────────────────────────────────────────── */
 export default function LiveMeetingPage() {
-  const { meetingId } = useParams();
-  const { user }      = useAuth();
-  const navigate      = useNavigate();
+  const { meetingId: rawId } = useParams();
+  const { user, token }      = useAuth();
+  const navigate             = useNavigate();
+
+  // ── Create a real meeting when navigating to /live/new ───────────────────
+  const [resolvedId, setResolvedId] = useState(
+    rawId && rawId !== "new" ? rawId : null
+  );
+  const [creating, setCreating] = useState(false);
+
+  useEffect(() => {
+    if (rawId === "new" && !resolvedId && !creating) {
+      setCreating(true);
+      const API = import.meta.env.VITE_API_URL || "http://127.0.0.1:8000";
+      // Create a blank meeting via the meetings endpoint
+      fetch(`${API}/meetings/create`, {
+        method: "POST",
+        headers: {
+          "Content-Type":  "application/json",
+          "Authorization": `Bearer ${token}`,
+        },
+        body: JSON.stringify({ title: "Live Meeting " + new Date().toLocaleTimeString() }),
+      })
+        .then(r => r.ok ? r.json() : null)
+        .then(d => {
+          const id = d?.id || d?.meeting_id;
+          if (id) {
+            setResolvedId(String(id));
+            navigate(`/live/${id}`, { replace: true });
+          } else {
+            // Fallback: use timestamp as room ID (no DB meeting, WS still works)
+            const fallback = String(Math.floor(Date.now() / 1000)).slice(-6);
+            setResolvedId(fallback);
+          }
+        })
+        .catch(() => {
+          const fallback = String(Math.floor(Date.now() / 1000)).slice(-6);
+          setResolvedId(fallback);
+        })
+        .finally(() => setCreating(false));
+    }
+  }, [rawId, resolvedId, creating, token, navigate]);
+
+  const meetingId = resolvedId || rawId;
 
   const {
     connected, participants, transcript, summary,
     decisions, actionItems, suggestions, notes,
     speakerActivity, snapshotSaved, wordCount, error,
     sendChunk, sendNote, sendTaskAssignment, endMeeting, dismissSuggestion,
-  } = useLiveMeeting(meetingId, user?.full_name || user?.email);
+  } = useLiveMeeting(resolvedId, user?.full_name || user?.email);
+
+  // Show loading while creating meeting
+  if (creating || (rawId === "new" && !resolvedId)) {
+    return (
+      <div className="flex h-[60vh] items-center justify-center">
+        <div className="text-center space-y-3">
+          <div className="h-10 w-10 animate-spin rounded-full border-4 border-indigo-200 border-t-indigo-600 mx-auto" />
+          <p className="text-sm text-slate-500 dark:text-slate-400">Starting live session…</p>
+        </div>
+      </div>
+    );
+  }
 
   const [inputText,    setInputText]    = useState("");
   const [speaker,      setSpeaker]      = useState(user?.full_name?.split(" ")[0] || "Me");
@@ -114,8 +238,31 @@ export default function LiveMeetingPage() {
   const [taskText,     setTaskText]     = useState("");
   const [taskAssignee, setTaskAssignee] = useState("");
   const [activeTab,    setActiveTab]    = useState("transcript");
-  const [isRecording,  setIsRecording]  = useState(false);
+  const [micError,     setMicError]     = useState(null);
   const txEndRef = useRef(null);
+
+  // ── Speech recognition ────────────────────────────────────────────────────
+  const { listening, supported, start: startMic, stop: stopMic } = useSpeechRecognition({
+    onResult: useCallback((text) => {
+      // Auto-send each final speech result as a transcript chunk
+      if (connected) {
+        sendChunk(text, speaker || null);
+      } else {
+        // Buffer locally if not yet connected
+        setInputText(prev => prev + " " + text);
+      }
+    }, [connected, sendChunk, speaker]),
+    onError: setMicError,
+  });
+
+  const toggleMic = () => {
+    setMicError(null);
+    if (listening) {
+      stopMic();
+    } else {
+      startMic();
+    }
+  };
 
   useEffect(() => {
     txEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -244,29 +391,87 @@ export default function LiveMeetingPage() {
                       {transcript}
                     </pre>
                   ) : (
-                    <div className="flex h-full items-center justify-center text-slate-400 text-sm">
-                      Start typing or paste transcript chunks below…
+                    <div className="flex h-full flex-col items-center justify-center gap-3 text-slate-400 text-sm">
+                      {supported ? (
+                        <>
+                          <Mic className="h-8 w-8 opacity-30" />
+                          <p>Click the mic button to start transcribing your meeting</p>
+                          <p className="text-xs opacity-60">Works in Chrome and Edge</p>
+                        </>
+                      ) : (
+                        <>
+                          <MicOff className="h-8 w-8 opacity-30" />
+                          <p>Speech recognition not supported in this browser</p>
+                          <p className="text-xs opacity-60">Use Chrome or Edge, or type manually below</p>
+                        </>
+                      )}
                     </div>
                   )}
                   <div ref={txEndRef} />
                 </div>
-                <div className="border-t border-slate-100 p-3 dark:border-slate-700/40">
-                  <form onSubmit={handleSendChunk} className="space-y-2">
-                    <div className="flex gap-2">
-                      <input value={speaker} onChange={e => setSpeaker(e.target.value)}
-                        placeholder="Speaker"
-                        className="w-24 rounded-lg border border-slate-200 bg-slate-50 px-2 py-1.5 text-xs outline-none focus:border-indigo-400 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200" />
-                      <textarea value={inputText} onChange={e => setInputText(e.target.value)}
-                        onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); handleSendChunk(e); }}}
-                        placeholder="Type or paste transcript chunk… (Enter to send)"
-                        rows={2}
-                        className="flex-1 resize-none rounded-lg border border-slate-200 bg-slate-50 px-3 py-1.5 text-xs outline-none focus:border-indigo-400 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200" />
-                      <button type="submit" disabled={!inputText.trim() || !connected}
-                        className="flex items-center gap-1 rounded-lg px-3 py-1.5 text-xs font-bold text-white disabled:opacity-40"
-                        style={{ background: "linear-gradient(135deg, #4338ca, #0e7490)" }}>
-                        <Send className="h-3.5 w-3.5" />
+
+                {/* Mic error */}
+                {micError && (
+                  <div className="mx-3 mb-2 rounded-lg bg-rose-50 px-3 py-2 text-xs text-rose-600 dark:bg-rose-950/30 dark:text-rose-400">
+                    {micError} — make sure you allowed microphone access
+                  </div>
+                )}
+
+                <div className="border-t border-slate-100 p-3 dark:border-slate-700/40 space-y-2">
+                  {/* Speaker name + Mic button */}
+                  <div className="flex items-center gap-2">
+                    <input
+                      value={speaker}
+                      onChange={e => setSpeaker(e.target.value)}
+                      placeholder="Your name"
+                      className="w-28 rounded-lg border border-slate-200 bg-slate-50 px-2 py-1.5 text-xs outline-none focus:border-indigo-400 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200"
+                    />
+
+                    {/* Main mic button */}
+                    {supported && (
+                      <button
+                        onClick={toggleMic}
+                        disabled={!connected}
+                        className={`flex items-center gap-2 rounded-xl px-4 py-2 text-sm font-bold transition-all disabled:opacity-40 ${
+                          listening
+                            ? "bg-rose-500 text-white shadow-lg shadow-rose-500/30 animate-pulse"
+                            : "bg-indigo-600 text-white hover:bg-indigo-700"
+                        }`}
+                      >
+                        {listening ? (
+                          <><MicOff className="h-4 w-4" /> Stop Recording</>
+                        ) : (
+                          <><Mic className="h-4 w-4" /> Start Recording</>
+                        )}
                       </button>
-                    </div>
+                    )}
+
+                    {listening && (
+                      <span className="flex items-center gap-1.5 text-xs text-rose-500 font-medium">
+                        <span className="h-2 w-2 rounded-full bg-rose-500 animate-pulse" />
+                        Listening…
+                      </span>
+                    )}
+                  </div>
+
+                  {/* Manual text input fallback */}
+                  <form onSubmit={handleSendChunk} className="flex gap-2">
+                    <textarea
+                      value={inputText}
+                      onChange={e => setInputText(e.target.value)}
+                      onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); handleSendChunk(e); }}}
+                      placeholder="Or type/paste transcript manually… (Enter to send)"
+                      rows={2}
+                      className="flex-1 resize-none rounded-lg border border-slate-200 bg-slate-50 px-3 py-1.5 text-xs outline-none focus:border-indigo-400 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200"
+                    />
+                    <button
+                      type="submit"
+                      disabled={!inputText.trim() || !connected}
+                      className="flex items-center gap-1 rounded-lg px-3 py-1.5 text-xs font-bold text-white disabled:opacity-40"
+                      style={{ background: "linear-gradient(135deg, #4338ca, #0e7490)" }}
+                    >
+                      <Send className="h-3.5 w-3.5" />
+                    </button>
                   </form>
                 </div>
               </>

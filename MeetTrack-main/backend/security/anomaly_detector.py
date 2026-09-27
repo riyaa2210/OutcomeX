@@ -26,16 +26,35 @@ from typing import Optional
 
 logger = logging.getLogger(__name__)
 
+# ── Redis — connect once, cache result ────────────────────────────────────────
+_redis_client = None
+_redis_checked = False   # True after first connection attempt
+
 
 def _get_redis():
+    """Return cached Redis client, or None if unavailable. Never retries after first failure."""
+    global _redis_client, _redis_checked
+    if _redis_checked:
+        return _redis_client          # return cached result (None or client)
+    _redis_checked = True
     try:
-        import redis
+        import redis as _redis
         url = os.getenv("REDIS_URL", "redis://localhost:6379/0")
-        r = redis.from_url(url, socket_connect_timeout=1, socket_timeout=1)
-        r.ping()
-        return r
+        client = _redis.from_url(
+            url,
+            socket_connect_timeout=0.3,
+            socket_timeout=0.3,
+            retry_on_timeout=False,
+        )
+        client.ping()
+        _redis_client = client
+        logger.info("[Anomaly] Redis connected")
     except Exception:
-        return None
+        _redis_client = None
+        logger.warning("[Anomaly] Redis unavailable — anomaly detection disabled (fail-open)")
+    return _redis_client
+
+
 
 
 # ── Risk scoring ──────────────────────────────────────────────────────────────

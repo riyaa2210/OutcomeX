@@ -60,7 +60,7 @@ def _get_redis():
     try:
         import redis
         url = os.getenv("REDIS_URL", "redis://localhost:6379/0")
-        r = redis.from_url(url, socket_connect_timeout=1, socket_timeout=1)
+        r = redis.from_url(url, socket_connect_timeout=0.5, socket_timeout=0.5, retry_on_timeout=False)
         r.ping()
         return r
     except Exception:

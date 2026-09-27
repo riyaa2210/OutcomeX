@@ -41,3 +41,20 @@ tests/results/
 dist/
 build/
 *.egg-info/
+
+# Redis Windows binary (local only, not needed in repo)
+../Redis/
+Redis/
+
+# Temp install/setup artifacts
+../pgvector-tmp/
+../pgvector-pg16.zip
+../redis-fresh.zip
+../install_pgvector.ps1
+../auto.json
+../import_test*.log*
+../pip_*.log*
+*.log.err
+
+# Python eggs and wheels
+*.zip

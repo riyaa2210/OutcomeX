@@ -4,10 +4,10 @@ from typing import Optional, List
 
 # ✅ Register Schema
 class UserCreate(BaseModel):
-    full_name: str
+    full_name: str = ""          # optional — defaults to empty string
     email: EmailStr
     password: str
-    role: str   # manager / employee
+    role: str = "employee"       # defaults to employee
 
 
 # ✅ Login Schema
